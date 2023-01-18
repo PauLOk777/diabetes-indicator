@@ -49,7 +49,7 @@
                             <archive>
                                 <manifest>
                                     <mainClass>
-                                        com.paulok.SparkApplication
+                                        com.paulok.ModelTraining
                                     </mainClass>
                                 </manifest>
                             </archive>

@@ -5,74 +5,64 @@ import org.apache.log4j.Logger;
 import org.apache.spark.ml.Pipeline;
 import org.apache.spark.ml.PipelineModel;
 import org.apache.spark.ml.PipelineStage;
-import org.apache.spark.ml.classification.RandomForestClassificationModel;
 import org.apache.spark.ml.classification.RandomForestClassifier;
 import org.apache.spark.ml.feature.VectorAssembler;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
-import org.apache.spark.sql.SparkSession;
 
 import java.io.IOException;
 
-public class SparkApplication {
+import static com.paulok.DiabetesIndicatorFileStructureUtils.FEATURES;
+import static com.paulok.DiabetesIndicatorFileStructureUtils.LABEL_COLUMN_NAME;
+import static com.paulok.DiabetesIndicatorFileStructureUtils.PREDICTION_COLUMN_NAME;
+import static com.paulok.DiabetesIndicatorFileStructureUtils.FEATURES_COLUMN_NAME;
 
-    private static final String DATA_FILE_PATH = "diabetes.csv";
-    private static final String FEATURES_DIVIDED_BY_COMMA = "HighBP,HighChol,CholCheck,BMI,Smoker,Stroke," +
-            "HeartDiseaseorAttack,PhysActivity,Fruits,Veggies,HvyAlcoholConsump,AnyHealthcare,NoDocbcCost,GenHlth," +
-            "MentHlth,PhysHlth,DiffWalk,Sex,Age,Education,Income";
-    private static final String[] FEATURES = FEATURES_DIVIDED_BY_COMMA.split(",");
+public class ModelTraining {
+
+    private static final String DATA_FILE_PATH = "diabetes_train.csv";
+    private static final String MODEL_PATH = "model";
 
     public static void main(String[] args) throws IOException {
-        String filePath = DATA_FILE_PATH;
-        if (args.length > 0) {
-            filePath = args[0];
-        }
-
         Logger.getLogger("org").setLevel(Level.ERROR);
-        SparkSession sparkSession = SparkSession.builder()
-                .appName("Diabetes Indicator")
-                .master("local")
-                .getOrCreate();
 
-        Dataset<Row> ds = sparkSession.read().format("csv").option("header", "true").load(filePath).cache();
-        ds = ds.na().drop();
+        ArgumentParser argumentParser = new ArgumentParser();
+        String[] adjustedArgs = argumentParser.parseArguments(args, DATA_FILE_PATH, MODEL_PATH);
+        String dataFilePath = adjustedArgs[0];
+        String modelPath = adjustedArgs[1];
 
-        ds = ds.withColumn("Diabetes_binary", ds.col("Diabetes_binary").cast("double"));
-        for (String feature: FEATURES) {
-            ds = ds.withColumn(feature, ds.col(feature).cast("double"));
-        }
+        Dataset<Row> ds = SparkUtils.readCsvFileWithHeaders(dataFilePath);
+
+        DatasetTuner tuner = new DatasetTuner();
+        ds = tuner.prepareDatasetForClassification(ds, LABEL_COLUMN_NAME, FEATURES);
 
         VectorAssembler assembler = new VectorAssembler()
                 .setInputCols(FEATURES)
                 .setOutputCol("features");
 
-        Dataset<Row>[] splits = ds.randomSplit(new double[] {0.8, 0.1, 0.1});
+        Dataset<Row>[] splits = ds.randomSplit(new double[] { 0.9, 0.1 });
         Dataset<Row> trainingData = splits[0];
         Dataset<Row> crossValidationData = splits[1];
-        Dataset<Row> testData = splits[2];
 
-        RandomForestClassifier rfc = new RandomForestClassifier()
-                .setLabelCol("Diabetes_binary")
-                .setFeaturesCol("features")
+        RandomForestClassifier gbtClassifier = new RandomForestClassifier()
+                .setLabelCol(LABEL_COLUMN_NAME)
+                .setFeaturesCol(FEATURES_COLUMN_NAME)
+                .setNumTrees(100)
                 .setMaxDepth(12)
-                .setMaxBins(4096)
-                .setNumTrees(20)
-                .setFeatureSubsetStrategy("auto");
+                .setMaxBins(50);
 
-        Pipeline pipeline = new Pipeline().setStages(new PipelineStage[] {assembler, rfc});
+        Pipeline pipeline = new Pipeline().setStages(new PipelineStage[] {assembler, gbtClassifier});
+
         PipelineModel model = pipeline.fit(trainingData);
 
         Dataset<Row> predictionsForTrainingData = model.transform(trainingData);
         Dataset<Row> predictionsForCrossValidationData = model.transform(crossValidationData);
-        Dataset<Row> predictionsForTestData = model.transform(testData);
 
-        System.err.println("Training data 0 rate: " + (predictionsForTrainingData.filter("prediction == 0").count() / (double) trainingData.filter("Diabetes_binary == 0").count()));
-        System.err.println("Training data 1 rate: " + (predictionsForTrainingData.filter("prediction == 1").count() / (double) trainingData.filter("Diabetes_binary == 1").count()));
-        System.err.println("Cross-validation data 0 rate: " + (predictionsForCrossValidationData.filter("prediction == 0").count() / (double) crossValidationData.filter("Diabetes_binary == 0").count()));
-        System.err.println("Cross-validation data 1 rate: " + (predictionsForCrossValidationData.filter("prediction == 1").count() / (double) crossValidationData.filter("Diabetes_binary == 1").count()));
-        System.err.println("Test data 0 rate: " + (predictionsForTestData.filter("prediction == 0").count() / (double) testData.filter("Diabetes_binary == 0").count()));
-        System.err.println("Test data 1 rate: " + (predictionsForTestData.filter("prediction == 1").count() / (double) testData.filter("Diabetes_binary == 1").count()));
+        AccuracyEvaluatorForBinaryClassification evaluator = new AccuracyEvaluatorForBinaryClassification();
+        System.err.println("Training data accuracy: " + evaluator.getAccuracy(
+                predictionsForTrainingData, PREDICTION_COLUMN_NAME, LABEL_COLUMN_NAME));
+        System.err.println("Cross-validation data accuracy: " + evaluator.getAccuracy(
+                predictionsForCrossValidationData, PREDICTION_COLUMN_NAME, LABEL_COLUMN_NAME));
 
-        model.write().overwrite().save("target/model");
+        model.write().overwrite().save(modelPath);
     }
 }
