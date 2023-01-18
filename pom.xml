@@ -49,7 +49,7 @@
                             <archive>
                                 <manifest>
                                     <mainClass>
-                                        com.paulok.ModelTraining
+                                        com.paulok.DiabetesPredictor
                                     </mainClass>
                                 </manifest>
                             </archive>
