@@ -27,12 +27,7 @@ public class DiabetesPredictor {
         String dataFilePath = adjustedArgs[0];
         String modelPath = adjustedArgs[1];
 
-        Dataset<Row> ds = SparkUtils.getSparkSession()
-                .read()
-                .format("csv")
-                .option("header", "true")
-                .load(dataFilePath)
-                .cache();
+        Dataset<Row> ds = SparkUtils.readCsvFileWithHeaders(dataFilePath);
 
         DatasetTuner tuner = new DatasetTuner();
         ds = tuner.prepareDatasetForClassification(ds, LABEL_COLUMN_NAME, FEATURES);

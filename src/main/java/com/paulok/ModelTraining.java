@@ -37,7 +37,7 @@ public class ModelTraining {
 
         VectorAssembler assembler = new VectorAssembler()
                 .setInputCols(FEATURES)
-                .setOutputCol("features");
+                .setOutputCol(FEATURES_COLUMN_NAME);
 
         Dataset<Row>[] splits = ds.randomSplit(new double[] { 0.9, 0.1 });
         Dataset<Row> trainingData = splits[0];
