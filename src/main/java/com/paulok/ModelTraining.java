@@ -43,14 +43,14 @@ public class ModelTraining {
         Dataset<Row> trainingData = splits[0];
         Dataset<Row> crossValidationData = splits[1];
 
-        RandomForestClassifier gbtClassifier = new RandomForestClassifier()
+        RandomForestClassifier rfc = new RandomForestClassifier()
                 .setLabelCol(LABEL_COLUMN_NAME)
                 .setFeaturesCol(FEATURES_COLUMN_NAME)
                 .setNumTrees(100)
                 .setMaxDepth(12)
                 .setMaxBins(50);
 
-        Pipeline pipeline = new Pipeline().setStages(new PipelineStage[] {assembler, gbtClassifier});
+        Pipeline pipeline = new Pipeline().setStages(new PipelineStage[] {assembler, rfc});
 
         PipelineModel model = pipeline.fit(trainingData);
 
